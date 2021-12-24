@@ -1,4 +1,4 @@
-#include "curl.h"
+#include "http.h"
 
 #include "os/c.h"
 #include "util/assert.h"
@@ -86,13 +86,7 @@ readBody(char* input, Size size, Size nitems, String* body) noexcept {
     return read;
 }
 
-Header::Header(StringView name, StringView value) noexcept
-    : name(name), value(value) {}
-
-FormData::FormData(StringView name, StringView value) noexcept
-    : name(name), value(value) {}
-
-struct Curl {
+struct Http {
     CURL* curl;
     char errmsg[256];
     String buf;
@@ -100,12 +94,12 @@ struct Curl {
     Vector<CURLlist> list;
 };
 
-Curl*
-curlMake(bool verbose) noexcept {
+Http*
+httpMake(bool verbose) noexcept {
     enum CURLcode err;
     (void)err;
 
-    Curl* self = xmalloc(Curl, 1);
+    Http* self = xmalloc(Http, 1);
 
     self->curl = curl_easy_init();
     assert_(self->curl);
@@ -128,13 +122,13 @@ curlMake(bool verbose) noexcept {
 }
 
 void
-curlDestroy(Curl* self) noexcept {
+httpDestroy(Http* self) noexcept {
     curl_easy_cleanup(self->curl);
     free(self);
 }
 
 void
-curlSetCookie(Curl* self, String cookie) noexcept {
+httpSetCookie(Http* self, String cookie) noexcept {
     enum CURLcode err;
     (void)err;
 
@@ -146,11 +140,12 @@ curlSetCookie(Curl* self, String cookie) noexcept {
 }
 
 StringView
-curlGet(
-    Curl* self,
+httpGet(
+    Http* self,
     String* response,
     StringView url,
-    Vector<Header> headers
+    Header* headers,
+    Size headersSize
 ) noexcept {
     self->buf.clear();
     if (self->buf.capacity < 1024) {
@@ -160,11 +155,13 @@ curlGet(
     self->buf << url << static_cast<char>(0);
 
     self->list.clear();
-    if (self->list.capacity < headers.size) {
-        self->list.reserve(headers.size);
+    if (self->list.capacity < headersSize) {
+        self->list.reserve(headersSize);
     }
 
-    for (Header* header = headers.begin(); header != headers.end(); ++header) {
+    for (Size i = 0; i < headersSize; i++) {
+        Header* header = headers + i;
+
         CURLlist item;
         // Pun item.data and store an offset.
         item.data = reinterpret_cast<char*>(self->buf.size);
@@ -220,12 +217,14 @@ curlGet(
 }
 
 StringView
-curlForm(
-    Curl* self,
+httpForm(
+    Http* self,
     String* response,
     StringView url,
-    Vector<Header> headers,
-    Vector<FormData> data
+    Header* headers,
+    Size headersSize,
+    FormData* data,
+    Size dataSize
 ) noexcept {
     self->buf.clear();
     if (self->buf.capacity < 1024) {
@@ -235,8 +234,8 @@ curlForm(
     self->buf << url << static_cast<char>(0);
 
     self->list.clear();
-    if (self->list.capacity < 1 + headers.size) {
-        self->list.reserve(1 + headers.size);
+    if (self->list.capacity < 1 + headersSize) {
+        self->list.reserve(1 + headersSize);
     }
 
     CURLlist contentType;
@@ -247,7 +246,9 @@ curlForm(
     self->buf << "Content-Type: multipart/form-data; boundary=BOUNDARY"
               << static_cast<char>(0);
 
-    for (Header* header = headers.begin(); header != headers.end(); ++header) {
+    for (Size i = 0; i < headersSize; i++) {
+        Header* header = headers + i;
+
         CURLlist item;
         // Pun item.data and store an offset.
         item.data = reinterpret_cast<char*>(self->buf.size);
@@ -266,11 +267,13 @@ curlForm(
     }
 
     Size bodyStart = self->buf.size;
-    for (FormData* item = data.begin(); item != data.end(); ++item) {
+    for (Size i = 0; i < dataSize; i++) {
+        FormData* entity = data + i;
+
         self->buf << "--BOUNDARY\r\nContent-Disposition: form-data; name=\""
-            << item->name
+            << entity->name
             << "\"\r\n\r\n"
-            << item->value
+            << entity->value
             << "\r\n";
     }
     self->buf << "--BOUNDARY--\r\n";

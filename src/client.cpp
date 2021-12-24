@@ -1,6 +1,6 @@
 #include "client.h"
 
-#include "curl.h"
+#include "http.h"
 
 #include "os/os.h"
 #include "util/int.h"
@@ -49,7 +49,7 @@ extractPuzzle(JsonDocument doc) noexcept {
 
 class LichessApi {
  public:
-    Curl* curl;
+    Http* http;
 
  public:
     LichessApi() noexcept;
@@ -63,12 +63,12 @@ class LichessApi {
 };
 
 LichessApi::LichessApi() noexcept {
-    curl = curlMake();
+    http = httpMake();
 }
 
 LichessApi::~LichessApi() noexcept {
-    curlDestroy(curl);
-    curl = 0;
+    httpDestroy(http);
+    http = 0;
 }
 
 /*
@@ -123,13 +123,15 @@ Puzzle
 LichessApi::getPuzzleDaily() noexcept {
     StringView url = "https://lichess.org/api/puzzle/daily";
 
-    Vector<Header> headers;
-    headers.push(Header("Host", "lichess.org"));
-    headers.push(Header("Accept", "*/*"));
+    Header headers[2];
+    headers[0].name = "Host";
+    headers[0].value = "lichess.org";
+    headers[1].name = "Accept";
+    headers[1].value = "*/*";
 
     String response;
 
-    String err = curlGet(curl, &response, url, Vector<Header>());
+    String err = httpGet(http, &response, url, headers, 2);
 
     if (err.data) {
         serr << err << '\n';
@@ -146,18 +148,22 @@ LichessApi::postPuzzleComplete(StringView puzzle, bool win) noexcept {
     String url = String() << "https://lichess.org/training/complete/mix/"
                           << puzzle;
 
-    Vector<FormData> data;
-    data.push(FormData("win", "false"));
-    data.push(FormData("rated", "true"));
+    FormData data[2];
+    data[0].name = "win";
+    data[0].value = "false";
+    data[1].name = "rated";
+    data[1].value = "true";
 
     String response;
 
-    String err = curlForm(
-        curl,
+    String err = httpForm(
+        http,
         &response,
         url,
-        Vector<Header>(),
-        static_cast<Vector<FormData>&&>(data)
+        0,
+        0,
+        data,
+        2
     );
 
     if (err.data) {
@@ -189,7 +195,7 @@ client() noexcept {
     rstrip(cookie);
 
     LichessApi api;
-    curlSetCookie(api.curl, cookie);
+    httpSetCookie(api.http, cookie);
 
     Puzzle p = api.getPuzzleDaily();
     sout << "Puzzle id = " << p.id << '\n';
