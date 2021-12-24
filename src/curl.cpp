@@ -3,6 +3,7 @@
 #include "os/c.h"
 #include "util/assert.h"
 #include "util/int.h"
+#include "util/new.h"
 #include "util/string-view.h"
 #include "util/string.h"
 #include "util/vector.h"
@@ -46,10 +47,17 @@ struct CURLlist {
 
 extern "C" {
 // curl/easy.h
-CURL_EXTERN CURL* curl_easy_init(void) noexcept;
-CURL_EXTERN enum CURLcode curl_easy_setopt(CURL*, enum CURLoption, ...) noexcept;
-CURL_EXTERN enum CURLcode curl_easy_perform(CURL*) noexcept;
-CURL_EXTERN void curl_easy_cleanup(CURL*) noexcept;
+CURL_EXTERN CURL*
+curl_easy_init(void) noexcept;
+
+CURL_EXTERN enum CURLcode
+curl_easy_setopt(CURL*, enum CURLoption, ...) noexcept;
+
+CURL_EXTERN enum CURLcode
+curl_easy_perform(CURL*) noexcept;
+
+CURL_EXTERN void
+curl_easy_cleanup(CURL*) noexcept;
 }
 
 static Size
@@ -97,7 +105,7 @@ curlMake(bool verbose) noexcept {
     enum CURLcode err;
     (void)err;
 
-    Curl* self = new Curl;
+    Curl* self = xmalloc(Curl, 1);
 
     self->curl = curl_easy_init();
     assert_(self->curl);
@@ -122,7 +130,7 @@ curlMake(bool verbose) noexcept {
 void
 curlDestroy(Curl* self) noexcept {
     curl_easy_cleanup(self->curl);
-    delete self;
+    free(self);
 }
 
 void
@@ -176,7 +184,9 @@ curlGet(
 
     // Now that buf has a stable base pointer, use it.
     char* url_ = self->buf.data;
-    for (CURLlist* item = self->list.begin(); item != self->list.end(); ++item) {
+    for (CURLlist* item = self->list.begin();
+         item != self->list.end();
+         ++item) {
         // It's actually the other way around... item has an offset and buf has
         // the base pointer.
         item->data += reinterpret_cast<Size>(self->buf.data);
@@ -267,7 +277,9 @@ curlForm(
 
     // Now that buf has a stable base pointer, use it.
     char* url_ = self->buf.data;
-    for (CURLlist* item = self->list.begin(); item != self->list.end(); ++item) {
+    for (CURLlist* item = self->list.begin();
+         item != self->list.end();
+         ++item) {
         // It's actually the other way around... item has an offset and buf has
         // the base pointer.
         item->data += reinterpret_cast<Size>(self->buf.data);
